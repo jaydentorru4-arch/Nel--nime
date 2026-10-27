@@ -1,0 +1,6 @@
+{
+  "name": "Nel Anime",
+  "description": "Sleek, modern anime streaming platform with trending catalogs, episode streaming, live search, and watchlists.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

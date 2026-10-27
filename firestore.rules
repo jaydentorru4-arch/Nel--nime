@@ -1,0 +1,93 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidBookmark(data) {
+      return data.keys().hasAll(['animeId', 'userId', 'title', 'poster']) &&
+        data.keys().hasOnly(['animeId', 'userId', 'title', 'poster', 'genres', 'rating', 'episodesCount', 'addedAt']) &&
+        data.animeId is string && data.animeId.size() > 0 && data.animeId.size() <= 64 && data.animeId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.userId is string && data.userId == request.auth.uid &&
+        data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+        data.poster is string && data.poster.size() > 0 && data.poster.size() <= 1000 &&
+        (!('genres' in data) || (data.genres is string && data.genres.size() <= 100)) &&
+        (!('rating' in data) || (data.rating is string && data.rating.size() <= 20)) &&
+        (!('episodesCount' in data) || (data.episodesCount is number && data.episodesCount >= 0)) &&
+        (!('addedAt' in data) || (data.addedAt is string && data.addedAt.size() <= 50));
+    }
+
+    function isValidWatchHistory(data) {
+      return data.keys().hasAll(['animeId', 'userId', 'title', 'episodeNumber', 'progressSeconds']) &&
+        data.keys().hasOnly(['animeId', 'userId', 'title', 'poster', 'episodeNumber', 'progressSeconds', 'totalDurationSeconds', 'updatedAt']) &&
+        data.animeId is string && data.animeId.size() > 0 && data.animeId.size() <= 64 && data.animeId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.userId is string && data.userId == request.auth.uid &&
+        data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+        data.episodeNumber is number && data.episodeNumber >= 1 &&
+        data.progressSeconds is number && data.progressSeconds >= 0 &&
+        (!('poster' in data) || (data.poster is string && data.poster.size() <= 1000)) &&
+        (!('totalDurationSeconds' in data) || (data.totalDurationSeconds is number && data.totalDurationSeconds >= 0)) &&
+        (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 50));
+    }
+
+    function isValidEpisodeComment(data) {
+      return data.keys().hasAll(['animeId', 'episodeNumber', 'userId', 'userName', 'content']) &&
+        data.keys().hasOnly(['animeId', 'episodeNumber', 'userId', 'userName', 'userAvatar', 'content', 'createdAt']) &&
+        data.animeId is string && data.animeId.size() > 0 && data.animeId.size() <= 64 && data.animeId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.episodeNumber is number && data.episodeNumber >= 1 &&
+        data.userId is string && data.userId == request.auth.uid &&
+        data.userName is string && data.userName.size() > 0 && data.userName.size() <= 100 &&
+        data.content is string && data.content.size() > 0 && data.content.size() <= 500 &&
+        (!('userAvatar' in data) || (data.userAvatar is string && data.userAvatar.size() <= 1000)) &&
+        (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 50));
+    }
+
+    // User bookmarks collection
+    match /users/{userId}/bookmarks/{bookmarkId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidId(bookmarkId) && isValidBookmark(incoming());
+      allow update: if isOwner(userId) && isValidId(bookmarkId) && isValidBookmark(incoming()) && incoming().userId == existing().userId;
+      allow delete: if isOwner(userId) && isValidId(bookmarkId);
+    }
+
+    // User watch progress history collection
+    match /users/{userId}/history/{historyId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidId(historyId) && isValidWatchHistory(incoming());
+      allow update: if isOwner(userId) && isValidId(historyId) && isValidWatchHistory(incoming()) && incoming().userId == existing().userId;
+      allow delete: if isOwner(userId) && isValidId(historyId);
+    }
+
+    // Public community comments
+    match /comments/{commentId} {
+      allow read: if true;
+      allow create: if isSignedIn() && isValidId(commentId) && isValidEpisodeComment(incoming());
+      allow update: if isSignedIn() && isValidId(commentId) && existing().userId == request.auth.uid && isValidEpisodeComment(incoming()) && incoming().userId == existing().userId;
+      allow delete: if isSignedIn() && isValidId(commentId) && existing().userId == request.auth.uid;
+    }
+  }
+}

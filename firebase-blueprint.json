@@ -1,0 +1,155 @@
+{
+  "entities": {
+    "Bookmark": {
+      "title": "Bookmark",
+      "description": "An anime saved in the user's watchlist",
+      "type": "object",
+      "properties": {
+        "animeId": {
+          "type": "string",
+          "description": "Unique identifier of the bookmarked anime",
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_-]+$"
+        },
+        "userId": {
+          "type": "string",
+          "description": "User ID owning the bookmark",
+          "maxLength": 128
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of the anime",
+          "maxLength": 200
+        },
+        "poster": {
+          "type": "string",
+          "description": "URL to the anime poster image",
+          "maxLength": 1000
+        },
+        "genres": {
+          "type": "string",
+          "description": "Comma separated genres or primary genre",
+          "maxLength": 100
+        },
+        "rating": {
+          "type": "string",
+          "description": "Score string like 9.2/10",
+          "maxLength": 20
+        },
+        "episodesCount": {
+          "type": "number",
+          "description": "Total episodes in series"
+        },
+        "addedAt": {
+          "type": "string",
+          "description": "ISO timestamp when added",
+          "maxLength": 50
+        }
+      },
+      "required": ["animeId", "userId", "title", "poster"]
+    },
+    "WatchHistory": {
+      "title": "WatchHistory",
+      "description": "Playback progress for an anime episode",
+      "type": "object",
+      "properties": {
+        "animeId": {
+          "type": "string",
+          "description": "Unique anime identifier",
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_-]+$"
+        },
+        "userId": {
+          "type": "string",
+          "description": "User ID",
+          "maxLength": 128
+        },
+        "title": {
+          "type": "string",
+          "description": "Anime title",
+          "maxLength": 200
+        },
+        "poster": {
+          "type": "string",
+          "description": "Anime poster image",
+          "maxLength": 1000
+        },
+        "episodeNumber": {
+          "type": "number",
+          "description": "Current episode number"
+        },
+        "progressSeconds": {
+          "type": "number",
+          "description": "Playback position in seconds"
+        },
+        "totalDurationSeconds": {
+          "type": "number",
+          "description": "Total episode duration in seconds"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "ISO timestamp of last playback",
+          "maxLength": 50
+        }
+      },
+      "required": ["animeId", "userId", "title", "episodeNumber", "progressSeconds"]
+    },
+    "EpisodeComment": {
+      "title": "EpisodeComment",
+      "description": "Community comment or reaction on an anime episode",
+      "type": "object",
+      "properties": {
+        "animeId": {
+          "type": "string",
+          "description": "ID of anime commented on",
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_-]+$"
+        },
+        "episodeNumber": {
+          "type": "number",
+          "description": "Episode number"
+        },
+        "userId": {
+          "type": "string",
+          "description": "UID of the author",
+          "maxLength": 128
+        },
+        "userName": {
+          "type": "string",
+          "description": "Author display name",
+          "maxLength": 100
+        },
+        "userAvatar": {
+          "type": "string",
+          "description": "Author avatar URL",
+          "maxLength": 1000
+        },
+        "content": {
+          "type": "string",
+          "description": "Comment content text",
+          "maxLength": 500
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "ISO timestamp",
+          "maxLength": 50
+        }
+      },
+      "required": ["animeId", "episodeNumber", "userId", "userName", "content"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/bookmarks/{bookmarkId}": {
+      "schema": { "$ref": "Bookmark" },
+      "description": "Bookmarks in user's personal watchlist"
+    },
+    "/users/{userId}/history/{historyId}": {
+      "schema": { "$ref": "WatchHistory" },
+      "description": "User watch progress for resume-watching"
+    },
+    "/comments/{commentId}": {
+      "schema": { "$ref": "EpisodeComment" },
+      "description": "Public community discussion comments on anime episodes"
+    }
+  }
+}
