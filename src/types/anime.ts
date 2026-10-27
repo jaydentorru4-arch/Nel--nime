@@ -93,3 +93,89 @@ export interface FilterState {
   sortBy: 'popular' | 'score' | 'title' | 'recent';
   searchQuery: string;
 }
+
+// User Profile, Economy, Social & Admin Types
+export interface UserProfile {
+  id: string;
+  email: string;
+  username: string;
+  bio: string;
+  avatar: string;
+  role: 'ADMIN' | 'VIP' | 'Member';
+  isAdmin: boolean;
+  nelCoins: number;
+  level: number;
+  xp: number;
+  episodesWatched: number;
+  chatCount: number;
+  lastDailyRewardDate: string | null;
+  dailyStreak: number;
+  equippedFrame: string | null;
+  equippedBanner: string | null;
+  equippedNameColor: string | null;
+  equippedBadge: string | null;
+  inventory: string[];
+  isBanned: boolean;
+  suspendedUntil: string | null;
+  chatMutedUntil: string | null;
+}
+
+export interface ShopItem {
+  id: string;
+  name: string;
+  description: string;
+  category: 'frame' | 'banner' | 'color' | 'badge';
+  price: number;
+  previewUrl?: string;
+  previewClass?: string;
+  badgeTag?: string;
+  colorHex?: string;
+  requiredLevel?: number;
+}
+
+export interface ChatMessage {
+  id: string;
+  userId: string;
+  userName: string;
+  userAvatar: string;
+  text: string;
+  timestamp: string;
+  role: 'ADMIN' | 'VIP' | 'Member';
+  level: number;
+  frame?: string | null;
+  nameColor?: string | null;
+  badge?: string | null;
+  isSystemBroadcast?: boolean;
+}
+
+export interface Friend {
+  id: string;
+  username: string;
+  avatar: string;
+  level: number;
+  status: 'online' | 'offline';
+  currentlyWatching?: string;
+  badge?: string;
+  frame?: string;
+}
+
+export interface FriendRequest {
+  id: string;
+  fromUserId: string;
+  fromUserName: string;
+  fromUserAvatar: string;
+  fromUserLevel: number;
+  toUserId: string;
+  timestamp: string;
+}
+
+export interface BugReport {
+  id: string;
+  userId: string;
+  userName: string;
+  category: 'Playback' | 'UI/Display' | 'Account/Coins' | 'Audio/Sub' | 'Other';
+  description: string;
+  screenshotUrl?: string;
+  timestamp: string;
+  status: 'Pending' | 'Investigating' | 'Resolved';
+}

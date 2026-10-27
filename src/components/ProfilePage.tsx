@@ -12,11 +12,20 @@ import {
   ArrowRight,
   Tv,
   Film,
-  CheckCircle2,
+  Coins,
+  Shield,
+  Palette,
+  ShoppingBag,
+  Edit3,
+  Check,
+  Flame,
+  Zap,
+  X,
 } from 'lucide-react';
 import { useAuth } from '../firebase/authContext';
-import { Bookmark as BookmarkType, WatchHistory, Anime } from '../types/anime';
+import { Bookmark as BookmarkType, WatchHistory, Anime, UserProfile } from '../types/anime';
 import { ANIME_DATABASE } from '../data/animeData';
+import { SHOP_ITEMS, calculateLevelFromXP } from '../services/userService';
 
 interface ProfilePageProps {
   bookmarks: BookmarkType[];
@@ -24,6 +33,9 @@ interface ProfilePageProps {
   onSelectAnime: (anime: Anime, episodeNumber?: number) => void;
   onRemoveBookmark: (animeId: string) => void;
   onExploreCatalog: () => void;
+  currentUser: UserProfile;
+  onUpdateCurrentUser: (profile: Partial<UserProfile>) => void;
+  onOpenShop: () => void;
 }
 
 export const ProfilePage: React.FC<ProfilePageProps> = ({
@@ -32,10 +44,19 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
   onSelectAnime,
   onRemoveBookmark,
   onExploreCatalog,
+  currentUser,
+  onUpdateCurrentUser,
+  onOpenShop,
 }) => {
   const { user, signInWithGoogle, signOut } = useAuth();
-  const [activeTab, setActiveTab] = useState<'watchlist' | 'history'>('watchlist');
+  const [activeTab, setActiveTab] = useState<'watchlist' | 'history' | 'customization'>('watchlist');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Profile Edit modal/state
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editUsername, setEditUsername] = useState(currentUser.username);
+  const [editBio, setEditBio] = useState(currentUser.bio);
+  const [editAvatar, setEditAvatar] = useState(currentUser.avatar);
 
   const filteredBookmarks = bookmarks.filter((b) =>
     b.title.toLowerCase().includes(searchQuery.toLowerCase())
@@ -47,113 +68,274 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
+  const { level, currentLevelXP, xpForNextLevel, progressPercent } = calculateLevelFromXP(
+    currentUser.xp || 45
+  );
+
+  // Equipped cosmetics
+  const equippedFrame = SHOP_ITEMS.find((s) => s.id === currentUser.equippedFrame);
+  const equippedBanner = SHOP_ITEMS.find((s) => s.id === currentUser.equippedBanner);
+  const equippedColor = SHOP_ITEMS.find((s) => s.id === currentUser.equippedNameColor);
+
+  const bannerUrl =
+    equippedBanner?.previewUrl ||
+    'https://images.unsplash.com/photo-1542051841857-5f90071e7989?w=1200&q=80';
+
+  const handleSaveProfile = (e: React.FormEvent) => {
+    e.preventDefault();
+    onUpdateCurrentUser({
+      username: editUsername.trim() || currentUser.username,
+      bio: editBio.trim() || currentUser.bio,
+      avatar: editAvatar.trim() || currentUser.avatar,
+    });
+    setIsEditingProfile(false);
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-      
-      {/* Profile Header Card */}
-      <div className="relative bg-[#14151a] border border-zinc-800 rounded-3xl p-6 sm:p-8 overflow-hidden shadow-xl">
-        {/* Subtle violet decorative glow */}
-        <div className="absolute top-0 right-0 w-96 h-96 bg-violet-600/10 rounded-full blur-3xl pointer-events-none"></div>
+      {/* Profile Banner & Glassmorphic Hero Card */}
+      <div className="relative rounded-3xl overflow-hidden border border-zinc-800 shadow-2xl bg-zinc-900">
+        {/* Equipped Banner Background */}
+        <div className="relative h-48 sm:h-64 w-full bg-zinc-950 overflow-hidden">
+          <img src={bannerUrl} alt="Profile Banner" className="w-full h-full object-cover" />
+          <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 via-zinc-900/60 to-transparent" />
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-[1px]" />
 
-        <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-          <div className="flex items-center gap-5">
-            {user?.photoURL ? (
-              <img
-                src={user.photoURL}
-                alt={user.displayName || 'User'}
-                className="w-20 h-20 rounded-2xl object-cover ring-4 ring-violet-600/30 shadow-lg"
-              />
-            ) : (
-              <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-violet-600 to-indigo-600 flex items-center justify-center text-white text-3xl font-black shadow-lg">
-                {user?.displayName ? user.displayName.charAt(0).toUpperCase() : <UserIcon className="w-10 h-10" />}
-              </div>
-            )}
+          {/* Banner Tag in corner */}
+          {equippedBanner && (
+            <span className="absolute top-4 right-4 px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-md text-zinc-300 text-[11px] font-medium border border-zinc-700/60">
+              Banner: {equippedBanner.name}
+            </span>
+          )}
+        </div>
 
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <h1 className="text-2xl sm:text-3xl font-black text-white">
-                  {user ? user.displayName || 'Anime Enthusiast' : 'Guest Viewer'}
-                </h1>
-                <span className="px-2 py-0.5 rounded-full bg-violet-950 border border-violet-800/60 text-violet-300 text-xs font-semibold">
-                  {user ? 'Verified Member' : 'Guest Mode'}
+        {/* Profile Details Container */}
+        <div className="px-6 sm:px-8 pb-8 -mt-20 relative z-10 space-y-6">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+            {/* Avatar & Identifiers */}
+            <div className="flex items-end gap-5">
+              <div className="relative flex-shrink-0">
+                <img
+                  src={currentUser.avatar}
+                  alt={currentUser.username}
+                  className={`w-28 h-28 sm:w-32 sm:h-32 rounded-3xl object-cover bg-zinc-950 shadow-2xl ${
+                    equippedFrame?.previewClass || 'ring-4 ring-zinc-800'
+                  }`}
+                />
+                <span className="absolute -bottom-2 -right-2 px-2.5 py-1 rounded-xl bg-violet-600 text-white font-black text-xs shadow-lg border-2 border-zinc-900">
+                  Lvl {level}
                 </span>
               </div>
-              <p className="text-xs sm:text-sm text-zinc-400">
-                {user ? user.email : 'Sign in with Google to sync your watchlist across all devices.'}
-              </p>
 
-              {user && (
-                <div className="flex items-center gap-2 text-xs text-emerald-400 pt-1">
-                  <ShieldCheck className="w-4 h-4" />
-                  <span>Cloud Firestore Sync Active</span>
+              <div className="space-y-1.5 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1
+                    className={`text-2xl sm:text-3xl font-black truncate ${
+                      equippedColor?.previewClass || 'text-white'
+                    }`}
+                  >
+                    {currentUser.username}
+                  </h1>
+
+                  {/* Rank Badges */}
+                  {currentUser.role === 'ADMIN' && (
+                    <span className="px-2.5 py-0.5 rounded-lg bg-violet-600 text-white font-black text-xs tracking-wider uppercase shadow-md shadow-violet-600/40">
+                      [ADMIN]
+                    </span>
+                  )}
+                  {currentUser.role === 'VIP' && (
+                    <span className="px-2.5 py-0.5 rounded-lg bg-amber-500 text-black font-black text-xs uppercase shadow-md">
+                      [VIP]
+                    </span>
+                  )}
+                  {currentUser.equippedBadge && currentUser.role !== 'ADMIN' && (
+                    <span className="px-2.5 py-0.5 rounded-lg bg-purple-950 text-purple-300 border border-purple-700 font-bold text-xs">
+                      [{currentUser.equippedBadge}]
+                    </span>
+                  )}
                 </div>
-              )}
+
+                <p className="text-xs sm:text-sm text-zinc-300 max-w-xl leading-relaxed">
+                  {currentUser.bio}
+                </p>
+
+                <p className="text-xs text-zinc-500 font-mono">{currentUser.email}</p>
+              </div>
+            </div>
+
+            {/* Profile Action Buttons */}
+            <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => setIsEditingProfile(true)}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-zinc-800/90 hover:bg-zinc-700 text-white text-xs font-bold border border-zinc-700 transition-all cursor-pointer shadow-sm"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>Edit Profile</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={onOpenShop}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white text-xs font-bold transition-all cursor-pointer shadow-lg shadow-violet-600/30"
+              >
+                <ShoppingBag className="w-3.5 h-3.5" />
+                <span>Nel Shop</span>
+              </button>
             </div>
           </div>
 
-          {/* Auth Actions */}
-          <div className="flex items-center gap-3">
-            {user ? (
-              <button
-                onClick={signOut}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-zinc-900 hover:bg-red-500/10 text-red-400 hover:text-red-300 border border-zinc-800 hover:border-red-500/40 text-xs font-semibold transition-all cursor-pointer"
-              >
-                <LogOut className="w-4 h-4" />
-                <span>Sign Out</span>
-              </button>
-            ) : (
-              <button
-                onClick={signInWithGoogle}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold shadow-lg shadow-violet-600/30 transition-all cursor-pointer"
-              >
-                <LogIn className="w-4 h-4" />
-                <span>Sign in with Google</span>
-              </button>
-            )}
-          </div>
-        </div>
+          {/* XP Progress Bar Section */}
+          <div className="p-4 rounded-2xl bg-zinc-950/70 border border-zinc-800/80 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                <Zap className="w-4 h-4 text-violet-400" />
+                <span className="font-bold text-white uppercase tracking-wider">
+                  Level {level} Progression
+                </span>
+              </div>
+              <span className="text-zinc-400 font-mono">
+                {currentLevelXP} / {xpForNextLevel} XP ({progressPercent}%)
+              </span>
+            </div>
 
-        {/* Stats Row */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-8 pt-6 border-t border-zinc-800/80">
-          <div className="p-3.5 rounded-xl bg-zinc-900/60 border border-zinc-800/60">
-            <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider block">
-              Watchlist Items
-            </span>
-            <span className="text-xl sm:text-2xl font-black text-white mt-1 block">
-              {bookmarks.length}
-            </span>
+            <div className="w-full bg-zinc-800/80 h-2.5 rounded-full overflow-hidden">
+              <div
+                className="bg-gradient-to-r from-violet-600 to-fuchsia-500 h-full rounded-full transition-all duration-500 shadow-sm"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+            <p className="text-[11px] text-zinc-500">
+              Gain XP by watching episodes (+25 XP), chatting in Global Chat (+5 XP), and daily streaks (+50 XP).
+            </p>
           </div>
 
-          <div className="p-3.5 rounded-xl bg-zinc-900/60 border border-zinc-800/60">
-            <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider block">
-              Episodes In Progress
-            </span>
-            <span className="text-xl sm:text-2xl font-black text-violet-400 mt-1 block">
-              {watchHistory.length}
-            </span>
-          </div>
+          {/* Stats Bar */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+            <div className="p-3.5 rounded-2xl bg-zinc-950/60 border border-zinc-800/80 flex items-center gap-3">
+              <Coins className="w-5 h-5 text-amber-400" />
+              <div>
+                <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block">
+                  Nel Coins
+                </span>
+                <span className="text-base sm:text-lg font-black text-amber-300">
+                  {currentUser.nelCoins}
+                </span>
+              </div>
+            </div>
 
-          <div className="p-3.5 rounded-xl bg-zinc-900/60 border border-zinc-800/60">
-            <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider block">
-              Resolution Quality
-            </span>
-            <span className="text-xl sm:text-2xl font-black text-emerald-400 mt-1 block">
-              1080p / 4K
-            </span>
-          </div>
+            <div className="p-3.5 rounded-2xl bg-zinc-950/60 border border-zinc-800/80 flex items-center gap-3">
+              <Tv className="w-5 h-5 text-violet-400" />
+              <div>
+                <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block">
+                  Episodes Watched
+                </span>
+                <span className="text-base sm:text-lg font-black text-white">
+                  {currentUser.episodesWatched || 6}
+                </span>
+              </div>
+            </div>
 
-          <div className="p-3.5 rounded-xl bg-zinc-900/60 border border-zinc-800/60">
-            <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider block">
-              Streaming Audio
-            </span>
-            <span className="text-xl sm:text-2xl font-black text-cyan-400 mt-1 block">
-              SUB & DUB
-            </span>
+            <div className="p-3.5 rounded-2xl bg-zinc-950/60 border border-zinc-800/80 flex items-center gap-3">
+              <Flame className="w-5 h-5 text-rose-400" />
+              <div>
+                <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block">
+                  Daily Streak
+                </span>
+                <span className="text-base sm:text-lg font-black text-white">
+                  {currentUser.dailyStreak} Days
+                </span>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-zinc-950/60 border border-zinc-800/80 flex items-center gap-3">
+              <Bookmark className="w-5 h-5 text-emerald-400" />
+              <div>
+                <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block">
+                  Watchlist Titles
+                </span>
+                <span className="text-base sm:text-lg font-black text-white">
+                  {bookmarks.length}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Tabs & Search */}
+      {/* Edit Profile Modal Dialog */}
+      {isEditingProfile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="relative w-full max-w-md bg-zinc-900 rounded-3xl border border-zinc-800 shadow-2xl p-6 sm:p-8 backdrop-blur-2xl">
+            <button
+              type="button"
+              onClick={() => setIsEditingProfile(false)}
+              className="absolute top-5 right-5 p-2 rounded-xl bg-zinc-800 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <h3 className="text-lg font-black text-white mb-4">Edit Profile Customization</h3>
+
+            <form onSubmit={handleSaveProfile} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1.5 uppercase">
+                  Username
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editUsername}
+                  onChange={(e) => setEditUsername(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-violet-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1.5 uppercase">
+                  Bio
+                </label>
+                <textarea
+                  rows={3}
+                  value={editBio}
+                  onChange={(e) => setEditBio(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-700 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-violet-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1.5 uppercase">
+                  Avatar Image URL
+                </label>
+                <input
+                  type="url"
+                  value={editAvatar}
+                  onChange={(e) => setEditAvatar(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-violet-500"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsEditingProfile(false)}
+                  className="flex-1 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-bold transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold transition-all cursor-pointer shadow-lg shadow-violet-600/30"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Tabs: Watchlist & Watch History */}
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-800 pb-3">
           <div className="flex items-center gap-3">
@@ -235,12 +417,12 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                           alt={b.title}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                         />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/30"></div>
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/30" />
 
                         {/* Remove from watchlist button */}
                         <button
                           onClick={() => onRemoveBookmark(b.animeId)}
-                          className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/70 hover:bg-red-600 text-zinc-300 hover:text-white transition-colors cursor-pointer z-10"
+                          className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/70 hover:bg-rose-600 text-zinc-300 hover:text-white transition-colors cursor-pointer z-10"
                           title="Remove from Watchlist"
                         >
                           <Trash2 className="w-3.5 h-3.5" />

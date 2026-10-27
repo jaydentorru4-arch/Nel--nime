@@ -13,9 +13,16 @@ import {
   Play,
   CheckCircle,
   User as UserIcon,
+  Shield,
+  Coins,
+  Bug,
+  Zap,
+  ArrowRight,
+  UserX,
+  Lock,
 } from 'lucide-react';
 import { AuthProvider, useAuth } from './firebase/authContext';
-import { Anime, Episode, Bookmark as BookmarkType, WatchHistory } from './types/anime';
+import { Anime, Episode, Bookmark as BookmarkType, WatchHistory, UserProfile, Friend } from './types/anime';
 import { ANIME_DATABASE } from './data/animeData';
 import {
   getLocalBookmarks,
@@ -29,6 +36,18 @@ import {
   saveWatchProgress,
   subscribeToWatchHistory,
 } from './services/firestoreService';
+import {
+  loadUserProfile,
+  saveUserProfile,
+  loadFriends,
+  saveFriends,
+  calculateLevelFromXP,
+  saveChatMessages,
+  loadChatMessages,
+  MASTER_ADMIN_EMAIL,
+} from './services/userService';
+
+// Components
 import { Navbar } from './components/Navbar';
 import { HeroBanner } from './components/HeroBanner';
 import { AnimeRow } from './components/AnimeRow';
@@ -36,19 +55,39 @@ import { AnimeCard } from './components/AnimeCard';
 import { CatalogView } from './components/CatalogView';
 import { WatchPlayer } from './components/WatchPlayer';
 import { WatchModal } from './components/WatchModal';
-import { MyListView } from './components/MyListView';
 import { AnimeDetailPage } from './components/AnimeDetailPage';
 import { ProfilePage } from './components/ProfilePage';
 import { AnimeModal } from './components/AnimeModal';
 
+// Upgraded Interactive Systems
+import { SplashScreen } from './components/SplashScreen';
+import { AdminPanel } from './components/AdminPanel';
+import { AdminLoginModal } from './components/AdminLoginModal';
+import { GlobalChatDrawer } from './components/GlobalChatDrawer';
+import { ShopModal } from './components/ShopModal';
+import { DailyRewardModal } from './components/DailyRewardModal';
+import { LevelUpModal } from './components/LevelUpModal';
+import { PublicProfileModal } from './components/PublicProfileModal';
+import { FriendsModal } from './components/FriendsModal';
+import { BugReportModal } from './components/BugReportModal';
+
 function MainApp() {
   const { user } = useAuth();
 
-  // Navigation state: 'home' | 'catalog' | 'trending' | 'mylist' | 'watch' | 'detail' | 'profile'
+  // Intro Splash Screen: show on initial load
+  const [showSplash, setShowSplash] = useState<boolean>(() => {
+    return !sessionStorage.getItem('nel_splash_entered');
+  });
+
+  // Current User Profile & Economy State
+  const [currentUser, setCurrentUser] = useState<UserProfile>(() => loadUserProfile());
+  const [friends, setFriends] = useState<Friend[]>(() => loadFriends());
+
+  // Navigation state: 'home' | 'catalog' | 'trending' | 'profile' | 'watch' | 'detail'
   const [currentView, setCurrentView] = useState<string>('home');
   const [selectedGenreForCatalog, setSelectedGenreForCatalog] = useState<string>('All');
 
-  // Currently watching state for Full Watch Page
+  // Video Watching States
   const [activeAnime, setActiveAnime] = useState<Anime>(ANIME_DATABASE[0]);
   const [activeEpisode, setActiveEpisode] = useState<Episode>(ANIME_DATABASE[0].episodes[0]);
   const [currentSeasonNumber, setCurrentSeasonNumber] = useState<number>(1);
@@ -60,45 +99,59 @@ function MainApp() {
     seasonNumber?: number;
   } | null>(null);
 
-  // Selected anime for dedicated detail page
+  // Detail Page Anime
   const [detailAnime, setDetailAnime] = useState<Anime>(ANIME_DATABASE[0]);
-
-  // Modal details state (synopsis modal fallback)
   const [modalAnime, setModalAnime] = useState<Anime | null>(null);
 
-  // Bookmarks state (synced with Firestore when authenticated, else local)
+  // Bookmarks & History
   const [bookmarks, setBookmarks] = useState<BookmarkType[]>([]);
-  // Watch history state (synced with Firestore when authenticated, else local)
   const [watchHistory, setWatchHistory] = useState<WatchHistory[]>([]);
 
-  // Firebase Setup Guide Modal
-  const [showFirebaseGuide, setShowFirebaseGuide] = useState(false);
+  // Modals & Panels State
+  const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
+  const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
+  const [isShopOpen, setIsShopOpen] = useState(false);
+  const [isDailyRewardOpen, setIsDailyRewardOpen] = useState(false);
+  const [isFriendsOpen, setIsFriendsOpen] = useState(false);
+  const [isBugReportOpen, setIsBugReportOpen] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
 
-  // Sync Bookmarks & History on Auth change
+  // Level Up Celebratory Modal
+  const [levelUpData, setLevelUpData] = useState<{ newLevel: number } | null>(null);
+
+  // Public Profile Modal Target
+  const [publicProfileTarget, setPublicProfileTarget] = useState<Partial<UserProfile> | null>(null);
+
+  // Sync Firebase Auth with Local User Profile
   useEffect(() => {
     if (user) {
+      const isMasterAdmin = user.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase();
+      setCurrentUser((prev) => {
+        const updated: UserProfile = {
+          ...prev,
+          email: user.email || prev.email,
+          username: user.displayName || prev.username,
+          avatar: user.photoURL || prev.avatar,
+          isAdmin: isMasterAdmin ? true : prev.isAdmin,
+          role: isMasterAdmin ? 'ADMIN' : prev.role,
+          equippedBadge: isMasterAdmin ? 'ADMIN' : prev.equippedBadge,
+        };
+        saveUserProfile(updated);
+        return updated;
+      });
+
       // Subscribe to Firestore bookmarks
       const unsubBookmarks = subscribeToBookmarks(
         user.uid,
-        (fbBookmarks) => {
-          setBookmarks(fbBookmarks);
-        },
-        (err) => {
-          console.warn('Falling back to local bookmarks:', err);
-          setBookmarks(getLocalBookmarks());
-        }
+        (fbBookmarks) => setBookmarks(fbBookmarks),
+        () => setBookmarks(getLocalBookmarks())
       );
 
-      // Subscribe to Firestore watch history
+      // Subscribe to Firestore history
       const unsubHistory = subscribeToWatchHistory(
         user.uid,
-        (fbHistory) => {
-          setWatchHistory(fbHistory);
-        },
-        (err) => {
-          console.warn('Falling back to local history:', err);
-          setWatchHistory(getLocalHistory());
-        }
+        (fbHistory) => setWatchHistory(fbHistory),
+        () => setWatchHistory(getLocalHistory())
       );
 
       return () => {
@@ -106,23 +159,120 @@ function MainApp() {
         unsubHistory();
       };
     } else {
-      // Guest mode - use local storage
       setBookmarks(getLocalBookmarks());
       setWatchHistory(getLocalHistory());
     }
   }, [user]);
 
-  // Check if anime is in watchlist
+  // Save user profile changes
+  const handleUpdateCurrentUser = (updates: Partial<UserProfile>) => {
+    setCurrentUser((prev) => {
+      const updated = { ...prev, ...updates };
+      saveUserProfile(updated);
+      return updated;
+    });
+  };
+
+  // Add XP and trigger Level-Up check
+  const handleAddXP = (amount: number) => {
+    const prevXP = currentUser.xp || 0;
+    const nextXP = prevXP + amount;
+
+    const prevLevel = calculateLevelFromXP(prevXP).level;
+    const nextLevelData = calculateLevelFromXP(nextXP);
+
+    if (nextLevelData.level > prevLevel) {
+      // Level up triggered! Award +100 Nel Coins
+      const nextCoins = currentUser.nelCoins + 100;
+      handleUpdateCurrentUser({
+        xp: nextXP,
+        level: nextLevelData.level,
+        nelCoins: nextCoins,
+      });
+      setLevelUpData({ newLevel: nextLevelData.level });
+    } else {
+      handleUpdateCurrentUser({
+        xp: nextXP,
+        level: nextLevelData.level,
+      });
+    }
+  };
+
+  // Claim Daily Reward
+  const handleClaimDailyReward = (coinsAwarded: number, xpAwarded: number) => {
+    const nextStreak = (currentUser.dailyStreak || 0) + 1;
+    const nextCoins = currentUser.nelCoins + coinsAwarded;
+    const prevXP = currentUser.xp || 0;
+    const nextXP = prevXP + xpAwarded;
+
+    const prevLevel = calculateLevelFromXP(prevXP).level;
+    const nextLevelData = calculateLevelFromXP(nextXP);
+
+    handleUpdateCurrentUser({
+      nelCoins: nextCoins,
+      xp: nextXP,
+      level: nextLevelData.level,
+      dailyStreak: nextStreak,
+      lastDailyRewardDate: new Date().toISOString(),
+    });
+
+    if (nextLevelData.level > prevLevel) {
+      setLevelUpData({ newLevel: nextLevelData.level });
+    }
+
+    setIsDailyRewardOpen(false);
+  };
+
+  // Send System Broadcast to Global Chat
+  const handleSendBroadcast = (message: string) => {
+    const msgs = loadChatMessages();
+    const broadcastMsg = {
+      id: `sys-${Date.now()}`,
+      userId: 'system',
+      userName: 'SYSTEM BROADCAST',
+      userAvatar: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&q=80',
+      text: message,
+      timestamp: 'Just now',
+      role: 'ADMIN' as const,
+      level: 99,
+      badge: 'ADMIN',
+      isSystemBroadcast: true,
+    };
+    const updated = [...msgs, broadcastMsg];
+    saveChatMessages(updated);
+  };
+
+  // Add Friend
+  const handleAddFriend = (friendName: string) => {
+    const newFriend: Friend = {
+      id: `fr-${Date.now()}`,
+      username: friendName,
+      avatar: `https://images.unsplash.com/photo-1534528741775?w=120&q=80`,
+      level: Math.floor(Math.random() * 15) + 2,
+      status: 'online',
+      currentlyWatching: 'Solo Leveling Episode 4',
+      frame: 'frame-neon-violet',
+    };
+    const updated = [newFriend, ...friends];
+    setFriends(updated);
+    saveFriends(updated);
+  };
+
+  const handleRemoveFriend = (friendId: string) => {
+    const updated = friends.filter((f) => f.id !== friendId);
+    setFriends(updated);
+    saveFriends(updated);
+  };
+
+  // Bookmark handling
   const isBookmarked = (animeId: string): boolean => {
     return bookmarks.some((b) => b.animeId === animeId);
   };
 
-  // Toggle bookmark in Firestore or LocalStorage
   const handleToggleBookmark = async (anime: Anime) => {
     const exists = isBookmarked(anime.id);
 
     if (exists) {
-      // Remove
       setBookmarks((prev) => prev.filter((b) => b.animeId !== anime.id));
       if (user) {
         try {
@@ -134,7 +284,6 @@ function MainApp() {
         removeLocalBookmark(anime.id);
       }
     } else {
-      // Add
       const newBm: BookmarkType = {
         animeId: anime.id,
         userId: user ? user.uid : 'guest',
@@ -160,14 +309,14 @@ function MainApp() {
     }
   };
 
-  // Navigate to dedicated Anime Detail Page
+  // Navigate to Detail Page
   const handleOpenDetail = (anime: Anime) => {
     setDetailAnime(anime);
     setCurrentView('detail');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Open the Modal Video Player Overlay immediately (Requirement 1)
+  // Open Popup Video Player Overlay
   const handleOpenWatchModal = (
     anime: Anime,
     episodeNumber: number = 1,
@@ -189,9 +338,15 @@ function MainApp() {
       };
 
     setModalVideo({ anime, episode: ep, seasonNumber });
+
+    // Watching award: +25 XP and episodes watched counter!
+    handleAddXP(25);
+    handleUpdateCurrentUser({
+      episodesWatched: (currentUser.episodesWatched || 0) + 1,
+    });
   };
 
-  // Open Full Dedicated Watch Page (Requirement 2)
+  // Open Full Dedicated Watch Page Layout
   const handleOpenFullWatchPage = (
     anime: Anime,
     episodeNumber: number = 1,
@@ -205,6 +360,11 @@ function MainApp() {
     setActiveEpisode(ep);
     setCurrentView('watch');
     window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    handleAddXP(25);
+    handleUpdateCurrentUser({
+      episodesWatched: (currentUser.episodesWatched || 0) + 1,
+    });
   };
 
   // Save playback progress
@@ -220,7 +380,6 @@ function MainApp() {
       updatedAt: new Date().toISOString(),
     };
 
-    // Optimistic local state update
     setWatchHistory((prev) => {
       const filtered = prev.filter((h) => h.animeId !== activeAnime.id);
       return [historyItem, ...filtered];
@@ -237,28 +396,125 @@ function MainApp() {
     }
   };
 
-  // Filtered lists for Home sections
+  // Curated spotlight titles required by prompt:
+  // Jujutsu Kaisen, Demon Slayer, Attack on Titan, One Piece, Solo Leveling, My Hero Academia
+  const popularMustWatch = ANIME_DATABASE.filter((a) => {
+    const t = a.title.toLowerCase();
+    return (
+      t.includes('jujutsu') ||
+      t.includes('demon slayer') ||
+      t.includes('attack on titan') ||
+      t.includes('one piece') ||
+      t.includes('solo leveling') ||
+      t.includes('my hero academia')
+    );
+  });
+
   const featuredAnime = ANIME_DATABASE.filter((a) => a.isFeatured);
   const trendingAnime = ANIME_DATABASE.filter((a) => a.isTrending);
   const popularAnime = ANIME_DATABASE.filter((a) => a.isPopular);
-  const recentAnime = ANIME_DATABASE.filter((a) => a.isRecent);
+  const actionFantasyAnime = ANIME_DATABASE.filter(
+    (a) => a.genres.includes('Action') || a.genres.includes('Fantasy')
+  );
+
+  // 1. BAN SCREEN OVERRIDE (Requirement 2 & 4: Ban User completely blocks account access)
+  if (currentUser.isBanned) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-[#090a0d] text-white">
+        <div className="max-w-md w-full p-8 rounded-3xl bg-zinc-900/90 border border-rose-600/50 shadow-2xl backdrop-blur-2xl text-center space-y-4">
+          <div className="w-16 h-16 rounded-2xl bg-rose-600/20 text-rose-500 border border-rose-500/40 flex items-center justify-center mx-auto">
+            <UserX className="w-8 h-8" />
+          </div>
+          <h1 className="text-2xl font-black text-white">Account Banned</h1>
+          <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed">
+            Your account <code className="text-rose-400 font-mono font-bold">{currentUser.email}</code> has been banned from accessing Nel Anime by an Administrator.
+          </p>
+          <div className="p-3.5 rounded-xl bg-zinc-950/80 border border-zinc-800 text-xs text-zinc-400">
+            Reason: Policy violation or administrative security action.
+          </div>
+          <div className="pt-2 flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => handleUpdateCurrentUser({ isBanned: false })}
+              className="w-full py-2.5 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-bold transition-all cursor-pointer"
+            >
+              Emergency Admin Unban
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsAdminLoginOpen(true)}
+              className="w-full py-2.5 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold transition-all cursor-pointer shadow-lg shadow-violet-600/30"
+            >
+              Log in with Master Admin Account
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. TEMPORARY SUSPENSION SCREEN OVERRIDE
+  const isSuspended =
+    currentUser.suspendedUntil && new Date(currentUser.suspendedUntil).getTime() > Date.now();
+  if (isSuspended) {
+    const formattedSuspension = new Date(currentUser.suspendedUntil!).toLocaleString();
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-[#090a0d] text-white">
+        <div className="max-w-md w-full p-8 rounded-3xl bg-zinc-900/90 border border-amber-500/50 shadow-2xl backdrop-blur-2xl text-center space-y-4">
+          <div className="w-16 h-16 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center mx-auto">
+            <Lock className="w-8 h-8" />
+          </div>
+          <h1 className="text-2xl font-black text-white">Account Temporarily Suspended</h1>
+          <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed">
+            Your access has been placed on hold until{' '}
+            <strong className="text-amber-400">{formattedSuspension}</strong>.
+          </p>
+          <button
+            type="button"
+            onClick={() => handleUpdateCurrentUser({ suspendedUntil: null })}
+            className="w-full py-2.5 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-bold transition-all cursor-pointer"
+          >
+            Emergency Clear Suspension
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-[#0f1014] text-zinc-100 flex flex-col font-sans">
-      {/* Sticky Navigation Bar */}
+    <div className="min-h-screen bg-[#0a0b0e] text-zinc-100 flex flex-col font-sans selection:bg-violet-600 selection:text-white">
+      {/* 1. ANIMATED INTRO / SPLASH SCREEN */}
+      {showSplash && (
+        <SplashScreen
+          onEnter={() => {
+            sessionStorage.setItem('nel_splash_entered', 'true');
+            setShowSplash(false);
+          }}
+        />
+      )}
+
+      {/* Sticky Top Navigation Bar with Nel Coins Counter */}
       <Navbar
         currentView={currentView}
         setCurrentView={setCurrentView}
         onSelectAnime={(anime, epNum) => handleOpenWatchModal(anime, epNum || 1)}
         bookmarksCount={bookmarks.length}
+        currentUser={currentUser}
+        onOpenShop={() => setIsShopOpen(true)}
+        onOpenDailyReward={() => setIsDailyRewardOpen(true)}
+        onOpenFriends={() => setIsFriendsOpen(true)}
+        onOpenAdminPanel={() => setIsAdminPanelOpen(true)}
+        onOpenAdminLogin={() => setIsAdminLoginOpen(true)}
+        onToggleChat={() => setIsChatOpen(!isChatOpen)}
+        isChatOpen={isChatOpen}
       />
 
-      {/* Main Body Views */}
+      {/* Main App Body */}
       <main className="flex-1">
-        {/* VIEW 1: HOME VIEW */}
+        {/* VIEW 1: REDESIGNED GLASSMORPHIC DASHBOARD */}
         {currentView === 'home' && (
-          <div className="space-y-6 pb-16">
-            {/* Hero Banner Carousel - "Watch Now" opens popup player modal */}
+          <div className="space-y-8 pb-20">
+            {/* Hero Carousel */}
             <HeroBanner
               featuredAnime={featuredAnime}
               onWatchNow={(anime) => handleOpenWatchModal(anime, 1)}
@@ -267,9 +523,46 @@ function MainApp() {
               onToggleBookmark={handleToggleBookmark}
             />
 
-            {/* Continue Watching Section (if history exists) */}
+            {/* MUST WATCH ANIME SPOTLIGHT (Jujutsu Kaisen, Demon Slayer, Solo Leveling, Attack on Titan, One Piece, MHA) */}
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-2">
+              <div className="p-6 rounded-3xl bg-gradient-to-r from-violet-950/40 via-zinc-900/60 to-fuchsia-950/30 border border-violet-500/30 backdrop-blur-xl shadow-2xl relative overflow-hidden">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-violet-600 text-white flex items-center justify-center shadow-md shadow-violet-600/40">
+                      <Flame className="w-4 h-4 fill-white" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                        Must-Watch Anime Hall of Fame
+                      </h2>
+                      <p className="text-xs text-zinc-400">
+                        Jujutsu Kaisen, Demon Slayer, Attack on Titan, One Piece, Solo Leveling & MHA
+                      </p>
+                    </div>
+                  </div>
+                  <span className="px-3 py-1 rounded-full bg-violet-600/20 text-violet-300 border border-violet-500/30 text-xs font-bold uppercase tracking-wider self-start sm:self-auto">
+                    Ultra HD 1080p
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                  {popularMustWatch.slice(0, 6).map((anime) => (
+                    <AnimeCard
+                      key={anime.id}
+                      anime={anime}
+                      onSelect={(a) => handleOpenDetail(a)}
+                      onPlay={(a) => handleOpenWatchModal(a, 1)}
+                      isBookmarked={isBookmarked(anime.id)}
+                      onToggleBookmark={handleToggleBookmark}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Continue Watching Row (if user has progress) */}
             {watchHistory.length > 0 && (
-              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
+              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex items-center justify-between pb-3">
                   <div className="flex items-center gap-2">
                     <Clock className="w-5 h-5 text-violet-400" />
@@ -295,7 +588,7 @@ function MainApp() {
                         onClick={() => {
                           if (anime) handleOpenWatchModal(anime, item.episodeNumber);
                         }}
-                        className="group flex-shrink-0 w-64 sm:w-72 bg-[#14151a] rounded-xl overflow-hidden border border-zinc-800 hover:border-violet-500/60 transition-all cursor-pointer shadow-lg hover:shadow-violet-900/20"
+                        className="group flex-shrink-0 w-64 sm:w-72 bg-[#14151a] rounded-2xl overflow-hidden border border-zinc-800 hover:border-violet-500/60 transition-all cursor-pointer shadow-lg hover:shadow-violet-900/20"
                       >
                         <div className="relative aspect-video w-full bg-zinc-900 overflow-hidden">
                           <img
@@ -308,10 +601,9 @@ function MainApp() {
                               <Play className="w-5 h-5 fill-white ml-0.5" />
                             </div>
                           </div>
-                          {/* Progress Bar */}
-                          <div className="absolute bottom-0 left-0 right-0 h-1 bg-zinc-700">
+                          <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-zinc-700">
                             <div
-                              className="h-full bg-violet-500"
+                              className="h-full bg-gradient-to-r from-violet-500 to-fuchsia-500"
                               style={{ width: `${progressPercent}%` }}
                             />
                           </div>
@@ -333,11 +625,11 @@ function MainApp() {
               </div>
             )}
 
-            {/* Trending Now Row */}
+            {/* Category 1: Trending Now */}
             <AnimeRow
               title="Trending Now"
               icon={<Flame className="w-5 h-5 text-amber-400" />}
-              subtitle="The most-watched series across the globe right now"
+              subtitle="The most-streamed masterworks worldwide this week"
               animeList={trendingAnime}
               onSelect={(anime) => handleOpenDetail(anime)}
               onPlay={(anime) => handleOpenWatchModal(anime, 1)}
@@ -346,50 +638,34 @@ function MainApp() {
               onViewAll={() => setCurrentView('trending')}
             />
 
-            {/* Popular Airing Row */}
+            {/* Category 2: Popular Anime */}
             <AnimeRow
-              title="Popular Airing"
+              title="Popular Anime"
               icon={<Tv className="w-5 h-5 text-violet-400" />}
-              subtitle="Currently broadcasting weekly masterworks"
+              subtitle="Highest viewer engagement and all-time classic releases"
               animeList={popularAnime}
               onSelect={(anime) => handleOpenDetail(anime)}
               onPlay={(anime) => handleOpenWatchModal(anime, 1)}
               isBookmarked={isBookmarked}
               onToggleBookmark={handleToggleBookmark}
               onViewAll={() => {
-                setSelectedGenreForCatalog('Action');
-                setCurrentView('catalog');
-              }}
-            />
-
-            {/* Recent Releases Row */}
-            <AnimeRow
-              title="Recent Releases"
-              icon={<Compass className="w-5 h-5 text-emerald-400" />}
-              subtitle="Fresh seasonal debuts and brand-new episodes"
-              animeList={recentAnime}
-              onSelect={(anime) => handleOpenDetail(anime)}
-              onPlay={(anime) => handleOpenWatchModal(anime, 1)}
-              isBookmarked={isBookmarked}
-              onToggleBookmark={handleToggleBookmark}
-              onViewAll={() => {
-                setSelectedGenreForCatalog('Fantasy');
-                setCurrentView('catalog');
-              }}
-            />
-
-            {/* Top Rated Classics */}
-            <AnimeRow
-              title="Top Rated Masterpieces"
-              icon={<Film className="w-5 h-5 text-cyan-400" />}
-              subtitle="Critically acclaimed series with scores above 9.0"
-              animeList={ANIME_DATABASE.filter((a) => parseFloat(a.score) >= 9.0)}
-              onSelect={(anime) => handleOpenDetail(anime)}
-              onPlay={(anime) => handleOpenWatchModal(anime, 1)}
-              isBookmarked={isBookmarked}
-              onToggleBookmark={handleToggleBookmark}
-              onViewAll={() => {
                 setSelectedGenreForCatalog('All');
+                setCurrentView('catalog');
+              }}
+            />
+
+            {/* Category 3: Action & Fantasy */}
+            <AnimeRow
+              title="Action & Fantasy Masterpieces"
+              icon={<Compass className="w-5 h-5 text-fuchsia-400" />}
+              subtitle="High-octane fights, supernatural powers, and mythical worlds"
+              animeList={actionFantasyAnime}
+              onSelect={(anime) => handleOpenDetail(anime)}
+              onPlay={(anime) => handleOpenWatchModal(anime, 1)}
+              isBookmarked={isBookmarked}
+              onToggleBookmark={handleToggleBookmark}
+              onViewAll={() => {
+                setSelectedGenreForCatalog('Action');
                 setCurrentView('catalog');
               }}
             />
@@ -425,14 +701,14 @@ function MainApp() {
         {/* VIEW 4: TRENDING VIEW */}
         {currentView === 'trending' && (
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-            <div className="flex items-center gap-2 pb-4 border-b border-zinc-800">
-              <Flame className="w-6 h-6 text-amber-500" />
+            <div className="flex items-center gap-3 pb-4 border-b border-zinc-800">
+              <Flame className="w-7 h-7 text-amber-500" />
               <div>
                 <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
                   Top Trending Anime
                 </h1>
                 <p className="text-xs sm:text-sm text-zinc-400">
-                  Ranked by live viewer counts, engagement, and stream completions
+                  Live popularity rankings computed from real-time streaming activity
                 </p>
               </div>
             </div>
@@ -440,8 +716,7 @@ function MainApp() {
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 sm:gap-6">
               {trendingAnime.map((anime, index) => (
                 <div key={anime.id} className="relative">
-                  {/* Rank Badge */}
-                  <div className="absolute -top-2 -left-2 z-20 w-8 h-8 rounded-xl bg-violet-600 text-white font-black text-sm flex items-center justify-center shadow-lg border border-violet-400/50">
+                  <div className="absolute -top-2 -left-2 z-20 w-8 h-8 rounded-xl bg-violet-600 text-white font-black text-xs flex items-center justify-center shadow-lg border border-violet-400/50">
                     #{index + 1}
                   </div>
                   <AnimeCard
@@ -457,21 +732,24 @@ function MainApp() {
           </div>
         )}
 
-        {/* VIEW 5: USER PROFILE & COMPLETE WATCHLIST PAGE */}
-        {(currentView === 'profile' || currentView === 'mylist') && (
+        {/* VIEW 5: USER PROFILE & CUSTOMIZATION VIEW */}
+        {currentView === 'profile' && (
           <ProfilePage
             bookmarks={bookmarks}
             watchHistory={watchHistory}
-            onSelectAnime={(anime) => handleOpenWatchModal(anime, 1)}
+            onSelectAnime={(anime, epNum) => handleOpenWatchModal(anime, epNum || 1)}
             onRemoveBookmark={(id) => {
               const anime = ANIME_DATABASE.find((a) => a.id === id);
               if (anime) handleToggleBookmark(anime);
             }}
             onExploreCatalog={() => setCurrentView('catalog')}
+            currentUser={currentUser}
+            onUpdateCurrentUser={handleUpdateCurrentUser}
+            onOpenShop={() => setIsShopOpen(true)}
           />
         )}
 
-        {/* VIEW 6: DEDICATED COMPLETE VIDEO PLAYER PAGE LAYOUT (Requirement 2) */}
+        {/* VIEW 6: DEDICATED COMPLETE VIDEO PLAYER PAGE */}
         {currentView === 'watch' && (
           <WatchPlayer
             anime={activeAnime}
@@ -489,7 +767,7 @@ function MainApp() {
         )}
       </main>
 
-      {/* POPUP / MODAL VIDEO PLAYER OVERLAY (Requirement 1) */}
+      {/* POPUP / MODAL VIDEO PLAYER OVERLAY */}
       {modalVideo && (
         <WatchModal
           anime={modalVideo.anime}
@@ -519,81 +797,105 @@ function MainApp() {
         onToggleBookmark={handleToggleBookmark}
       />
 
-      {/* Firebase Setup Guide Modal */}
-      {showFirebaseGuide && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-          <div className="relative w-full max-w-2xl bg-[#14151a] border border-zinc-800 rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <button
-              onClick={() => setShowFirebaseGuide(false)}
-              className="absolute top-5 right-5 p-2 rounded-full bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
+      {/* 3 & 4. OWNER & ADMIN DASHBOARD PANEL */}
+      <AdminPanel
+        isOpen={isAdminPanelOpen}
+        onClose={() => setIsAdminPanelOpen(false)}
+        currentUser={currentUser}
+        onUpdateCurrentUser={handleUpdateCurrentUser}
+        onSendBroadcast={handleSendBroadcast}
+      />
 
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-violet-600/20 border border-violet-500/40 flex items-center justify-center text-violet-400">
-                <CheckCircle className="w-6 h-6" />
-              </div>
-              <div>
-                <h3 className="text-xl font-bold text-white">Firebase & Authentication Setup</h3>
-                <p className="text-xs text-zinc-400">Configured and active for Nel Anime</p>
-              </div>
-            </div>
+      {/* MASTER ADMIN LOGIN OVERRIDE MODAL */}
+      <AdminLoginModal
+        isOpen={isAdminLoginOpen}
+        onClose={() => setIsAdminLoginOpen(false)}
+        currentUser={currentUser}
+        onAdminLoginSuccess={(profileUpdates) => {
+          handleUpdateCurrentUser(profileUpdates);
+          setIsAdminPanelOpen(true);
+        }}
+      />
 
-            <div className="space-y-4 text-xs sm:text-sm text-zinc-300">
-              <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 space-y-2">
-                <h4 className="font-bold text-white flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                  Active Firebase Services
-                </h4>
-                <ul className="list-disc list-inside space-y-1 text-zinc-400">
-                  <li>
-                    <strong>Firebase Authentication:</strong> Google Sign-In with popup authorization.
-                  </li>
-                  <li>
-                    <strong>Cloud Firestore:</strong> Dedicated database for user watchlists, continue watching progress, and episode comments.
-                  </li>
-                  <li>
-                    <strong>Security Rules:</strong> Zero-trust schema validation rules active on all collections.
-                  </li>
-                </ul>
-              </div>
+      {/* 5. GLOBAL CHAT DRAWER */}
+      <GlobalChatDrawer
+        isOpen={isChatOpen}
+        onToggle={() => setIsChatOpen(!isChatOpen)}
+        currentUser={currentUser}
+        onOpenPublicProfile={(target) => setPublicProfileTarget(target)}
+        onAddXP={handleAddXP}
+        onUpdateCurrentUser={handleUpdateCurrentUser}
+      />
 
-              <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 space-y-2">
-                <h4 className="font-bold text-white">Google Sign-In in Firebase Console</h4>
-                <p className="text-zinc-400 leading-relaxed">
-                  To allow users to sign in with their Google accounts on production domains:
-                </p>
-                <ol className="list-decimal list-inside space-y-1 text-zinc-400">
-                  <li>Open the <strong>Firebase Console</strong> and select your project.</li>
-                  <li>Navigate to <strong>Build &rarr; Authentication &rarr; Sign-in method</strong>.</li>
-                  <li>Verify <strong>Google</strong> provider is enabled and project support email is set.</li>
-                  <li>Under <strong>Authorized domains</strong>, ensure your domain is added.</li>
-                </ol>
-              </div>
+      {/* 6. NEL CUSTOMIZATION SHOP MODAL */}
+      <ShopModal
+        isOpen={isShopOpen}
+        onClose={() => setIsShopOpen(false)}
+        currentUser={currentUser}
+        onUpdateCurrentUser={handleUpdateCurrentUser}
+      />
 
-              <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 space-y-2">
-                <h4 className="font-bold text-white">Guest Mode & Fallbacks</h4>
-                <p className="text-zinc-400 leading-relaxed">
-                  Even without signing in, users can immediately bookmark anime, maintain watch progress, and stream episodes via local state fallbacks. When they sign in, bookmarks and history are synced directly to Firestore.
-                </p>
-              </div>
-            </div>
+      {/* 24-HOUR DAILY REWARD MODAL */}
+      <DailyRewardModal
+        isOpen={isDailyRewardOpen}
+        onClose={() => setIsDailyRewardOpen(false)}
+        currentUser={currentUser}
+        onClaimReward={handleClaimDailyReward}
+      />
 
-            <div className="flex justify-end pt-2">
-              <button
-                onClick={() => setShowFirebaseGuide(false)}
-                className="px-5 py-2.5 bg-violet-600 hover:bg-violet-500 text-white font-semibold text-xs rounded-xl transition-colors cursor-pointer"
-              >
-                Close Guide
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* LEVEL UP POP-UP OVERLAY */}
+      {levelUpData && (
+        <LevelUpModal
+          isOpen={!!levelUpData}
+          onClose={() => setLevelUpData(null)}
+          newLevel={levelUpData.newLevel}
+          bonusCoins={100}
+        />
       )}
 
+      {/* PUBLIC PROFILE INSPECTION MODAL */}
+      <PublicProfileModal
+        user={publicProfileTarget}
+        onClose={() => setPublicProfileTarget(null)}
+        onSendFriendRequest={(target) => {
+          if (target.username) handleAddFriend(target.username);
+        }}
+        isAlreadyFriend={friends.some((f) => f.username === publicProfileTarget?.username)}
+      />
+
+      {/* FRIENDS LIST MODAL */}
+      <FriendsModal
+        isOpen={isFriendsOpen}
+        onClose={() => setIsFriendsOpen(false)}
+        friends={friends}
+        onAddFriend={handleAddFriend}
+        onRemoveFriend={handleRemoveFriend}
+        onOpenProfile={(target) => {
+          setIsFriendsOpen(false);
+          setPublicProfileTarget(target);
+        }}
+      />
+
+      {/* 8. REPORT BUG MODAL */}
+      <BugReportModal
+        isOpen={isBugReportOpen}
+        onClose={() => setIsBugReportOpen(false)}
+        currentUser={currentUser}
+      />
+
+      {/* FLOATING REPORT BUG BUTTON (Requirement 8) */}
+      <button
+        type="button"
+        onClick={() => setIsBugReportOpen(true)}
+        className="fixed bottom-6 left-6 z-40 px-3.5 py-2 rounded-2xl bg-zinc-900/90 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-700/80 shadow-xl backdrop-blur-md transition-all cursor-pointer flex items-center gap-2 group text-xs font-bold"
+        title="Report an issue or bug to Admin"
+      >
+        <Bug className="w-4 h-4 text-rose-400 group-hover:scale-110 transition-transform" />
+        <span className="hidden sm:inline">Report Bug</span>
+      </button>
+
       {/* Footer */}
-      <footer className="bg-[#0b0c0e] border-t border-zinc-800/80 py-12 px-4 sm:px-6 lg:px-8 mt-auto">
+      <footer className="bg-[#090a0d] border-t border-zinc-800/80 py-10 px-4 sm:px-6 lg:px-8 mt-auto">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-violet-600 to-indigo-500 flex items-center justify-center text-white shadow-lg shadow-violet-600/30">
@@ -604,12 +906,12 @@ function MainApp() {
                 NEL<span className="text-violet-500">ANIME</span>
               </span>
               <p className="text-xs text-zinc-500">
-                Premium Anime Streaming Platform &bull; No ads &bull; HD Playback
+                Glassmorphic Anime Streaming & Community &bull; HD Playback &bull; Zero Ads
               </p>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-center gap-6 text-xs font-medium text-zinc-400">
+          <div className="flex flex-wrap items-center justify-center gap-5 text-xs font-medium text-zinc-400">
             <button
               onClick={() => {
                 setCurrentView('home');
@@ -617,7 +919,7 @@ function MainApp() {
               }}
               className="hover:text-white transition-colors cursor-pointer"
             >
-              Home
+              Dashboard
             </button>
             <button
               onClick={() => {
@@ -626,28 +928,54 @@ function MainApp() {
               }}
               className="hover:text-white transition-colors cursor-pointer"
             >
-              Browse Catalog
+              Catalogue
             </button>
             <button
-              onClick={() => {
-                setCurrentView('trending');
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-              className="hover:text-white transition-colors cursor-pointer"
+              onClick={() => setIsShopOpen(true)}
+              className="hover:text-amber-400 transition-colors cursor-pointer flex items-center gap-1"
             >
-              Trending
+              <Coins className="w-3.5 h-3.5 text-amber-400" />
+              Nel Shop
             </button>
             <button
-              onClick={() => setShowFirebaseGuide(true)}
-              className="flex items-center gap-1 hover:text-violet-400 transition-colors cursor-pointer"
+              onClick={() => setIsFriendsOpen(true)}
+              className="hover:text-violet-400 transition-colors cursor-pointer"
             >
-              <HelpCircle className="w-3.5 h-3.5" />
-              Firebase Setup
+              Friends ({friends.length})
             </button>
+            <button
+              onClick={() => setShowSplash(true)}
+              className="hover:text-violet-400 transition-colors cursor-pointer"
+            >
+              Intro Animation
+            </button>
+            <button
+              onClick={() => setIsBugReportOpen(true)}
+              className="text-rose-400 hover:text-rose-300 transition-colors cursor-pointer flex items-center gap-1"
+            >
+              <Bug className="w-3.5 h-3.5" />
+              Report Issue
+            </button>
+            {currentUser.isAdmin ? (
+              <button
+                onClick={() => setIsAdminPanelOpen(true)}
+                className="text-violet-400 font-bold hover:text-violet-300 transition-colors cursor-pointer flex items-center gap-1"
+              >
+                <Shield className="w-3.5 h-3.5" />
+                Admin Panel
+              </button>
+            ) : (
+              <button
+                onClick={() => setIsAdminLoginOpen(true)}
+                className="text-zinc-500 hover:text-violet-400 transition-colors cursor-pointer flex items-center gap-1"
+              >
+                Admin Login
+              </button>
+            )}
           </div>
 
           <p className="text-xs text-zinc-600 text-center md:text-right">
-            &copy; {new Date().getFullYear()} Nel Anime. Built with React, Tailwind CSS, & Cloud Firestore.
+            &copy; {new Date().getFullYear()} Nel Anime. Built with React & Tailwind CSS.
           </p>
         </div>
       </footer>

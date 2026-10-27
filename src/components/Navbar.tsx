@@ -12,16 +12,33 @@ import {
   X,
   Compass,
   Menu,
+  Coins,
+  Shield,
+  ShoppingBag,
+  Users,
+  Zap,
+  Calendar,
+  KeyRound,
+  MessageSquare,
 } from 'lucide-react';
 import { useAuth } from '../firebase/authContext';
-import { Anime } from '../types/anime';
+import { Anime, UserProfile } from '../types/anime';
 import { ANIME_DATABASE } from '../data/animeData';
+import { canClaimDailyReward, MASTER_ADMIN_EMAIL } from '../services/userService';
 
 interface NavbarProps {
   currentView: string;
   setCurrentView: (view: string) => void;
   onSelectAnime: (anime: Anime, episodeNumber?: number) => void;
   bookmarksCount: number;
+  currentUser: UserProfile;
+  onOpenShop: () => void;
+  onOpenDailyReward: () => void;
+  onOpenFriends: () => void;
+  onOpenAdminPanel: () => void;
+  onOpenAdminLogin: () => void;
+  onToggleChat: () => void;
+  isChatOpen: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -29,57 +46,42 @@ export const Navbar: React.FC<NavbarProps> = ({
   setCurrentView,
   onSelectAnime,
   bookmarksCount,
+  currentUser,
+  onOpenShop,
+  onOpenDailyReward,
+  onOpenFriends,
+  onOpenAdminPanel,
+  onOpenAdminLogin,
+  onToggleChat,
+  isChatOpen,
 }) => {
   const { user, signInWithGoogle, signOut, error, clearError } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchResults, setSearchResults] = useState<Anime[]>([]);
-  const [isSearchingGlobal, setIsSearchingGlobal] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const profileMenuRef = useRef<HTMLDivElement>(null);
 
-  // Live search filtering with instant local + global AniList lookup
+  const isDailyRewardReady = canClaimDailyReward(currentUser.lastDailyRewardDate);
+  const isAdmin = currentUser.isAdmin || currentUser.role === 'ADMIN' || currentUser.email === MASTER_ADMIN_EMAIL;
+
+  // Live search filtering with instant local matches
   useEffect(() => {
     if (!searchQuery.trim()) {
       setSearchResults([]);
-      setIsSearchingGlobal(false);
       return;
     }
     const q = searchQuery.toLowerCase().trim();
-    // Instant local matches
     const localResults = ANIME_DATABASE.filter(
       (a) =>
         a.title.toLowerCase().includes(q) ||
         (a.japaneseTitle && a.japaneseTitle.toLowerCase().includes(q)) ||
         a.genres.some((g) => g.toLowerCase().includes(q))
-    ).slice(0, 5);
+    ).slice(0, 6);
 
     setSearchResults(localResults);
-
-    // Global AniList lookup if query has at least 2 characters
-    if (q.length >= 2) {
-      setIsSearchingGlobal(true);
-      const timer = setTimeout(async () => {
-        try {
-          const { searchGlobalAniList } = await import('../services/aniListService');
-          const globalResults = await searchGlobalAniList(searchQuery, 6);
-          setSearchResults((prev) => {
-            const seen = new Set(prev.map((item) => item.title.toLowerCase()));
-            const uniqueGlobal = globalResults.filter(
-              (g) => !seen.has(g.title.toLowerCase())
-            );
-            return [...prev, ...uniqueGlobal].slice(0, 8);
-          });
-        } catch (err) {
-          console.warn('Global search fallback:', err);
-        } finally {
-          setIsSearchingGlobal(false);
-        }
-      }, 350);
-      return () => clearTimeout(timer);
-    }
   }, [searchQuery]);
 
   // Close menus on outside click
@@ -102,15 +104,15 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <>
-      <header className="sticky top-0 z-50 w-full bg-[#0f1014]/90 backdrop-blur-md border-b border-zinc-800/80 transition-colors">
+      <header className="sticky top-0 z-50 w-full bg-[#0d0e12]/90 backdrop-blur-xl border-b border-zinc-800/80 transition-colors">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16 gap-4">
-            
+          <div className="flex items-center justify-between h-16 gap-3">
             {/* Logo */}
-            <div className="flex items-center gap-8">
+            <div className="flex items-center gap-6">
               <button
+                type="button"
                 onClick={() => setCurrentView('home')}
-                className="flex items-center gap-2.5 text-left group focus:outline-none"
+                className="flex items-center gap-2.5 text-left group focus:outline-none cursor-pointer"
               >
                 <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-violet-600 to-fuchsia-600 flex items-center justify-center shadow-lg shadow-violet-500/25 group-hover:scale-105 transition-transform">
                   <Play className="w-5 h-5 text-white fill-current ml-0.5" />
@@ -118,19 +120,22 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <div>
                   <div className="flex items-center">
                     <span className="text-xl font-black tracking-wider text-white">NEL</span>
-                    <span className="text-xl font-black tracking-wider text-violet-400 ml-1">ANIME</span>
+                    <span className="text-xl font-black tracking-wider text-violet-400 ml-1">
+                      ANIME
+                    </span>
                   </div>
-                  <span className="text-[10px] uppercase font-semibold text-zinc-400 tracking-widest block -mt-1">
-                    Stream Stream HD
+                  <span className="text-[9px] uppercase font-bold text-zinc-400 tracking-widest block -mt-1">
+                    Streaming Platform
                   </span>
                 </div>
               </button>
 
               {/* Desktop Nav Links */}
-              <nav className="hidden md:flex items-center gap-1">
+              <nav className="hidden lg:flex items-center gap-1">
                 <button
+                  type="button"
                   onClick={() => setCurrentView('home')}
-                  className={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
                     currentView === 'home'
                       ? 'text-white bg-zinc-800/90 shadow-sm'
                       : 'text-zinc-300 hover:text-white hover:bg-zinc-800/50'
@@ -139,44 +144,47 @@ export const Navbar: React.FC<NavbarProps> = ({
                   Home
                 </button>
                 <button
+                  type="button"
                   onClick={() => setCurrentView('catalog')}
-                  className={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
                     currentView === 'catalog'
                       ? 'text-white bg-zinc-800/90 shadow-sm'
                       : 'text-zinc-300 hover:text-white hover:bg-zinc-800/50'
                   }`}
                 >
                   <span className="flex items-center gap-1.5">
-                    <Compass className="w-4 h-4 text-violet-400" />
+                    <Compass className="w-3.5 h-3.5 text-violet-400" />
                     Catalog
                   </span>
                 </button>
                 <button
+                  type="button"
                   onClick={() => setCurrentView('trending')}
-                  className={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
                     currentView === 'trending'
                       ? 'text-white bg-zinc-800/90 shadow-sm'
                       : 'text-zinc-300 hover:text-white hover:bg-zinc-800/50'
                   }`}
                 >
                   <span className="flex items-center gap-1.5">
-                    <Flame className="w-4 h-4 text-amber-500" />
+                    <Flame className="w-3.5 h-3.5 text-amber-500" />
                     Trending
                   </span>
                 </button>
                 <button
-                  onClick={() => setCurrentView('mylist')}
-                  className={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition-colors relative ${
-                    currentView === 'mylist'
+                  type="button"
+                  onClick={() => setCurrentView('profile')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                    currentView === 'profile'
                       ? 'text-white bg-zinc-800/90 shadow-sm'
                       : 'text-zinc-300 hover:text-white hover:bg-zinc-800/50'
                   }`}
                 >
                   <span className="flex items-center gap-1.5">
-                    <Bookmark className="w-4 h-4 text-violet-400" />
+                    <Bookmark className="w-3.5 h-3.5 text-violet-400" />
                     My List
                     {bookmarksCount > 0 && (
-                      <span className="ml-0.5 px-1.5 py-0.2 bg-violet-600 text-white text-[11px] font-bold rounded-full">
+                      <span className="ml-0.5 px-1.5 py-0.2 bg-violet-600 text-white text-[10px] font-bold rounded-full">
                         {bookmarksCount}
                       </span>
                     )}
@@ -185,176 +193,268 @@ export const Navbar: React.FC<NavbarProps> = ({
               </nav>
             </div>
 
-            {/* Live Search and Profile */}
-            <div className="flex items-center gap-3">
+            {/* Quick Actions, Economy, & Profile */}
+            <div className="flex items-center gap-2 sm:gap-3">
               {/* Search Bar Container */}
-              <div className="relative">
+              <div className="relative hidden md:block">
                 <div className="relative flex items-center">
-                  <Search className="w-4 h-4 text-zinc-400 absolute left-3.5 pointer-events-none" />
+                  <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-3 pointer-events-none" />
                   <input
                     ref={searchInputRef}
                     type="text"
-                    placeholder="Search anime, genres..."
+                    placeholder="Search anime..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     onFocus={() => setIsSearchOpen(true)}
-                    className="w-44 sm:w-64 md:w-72 bg-zinc-900/90 hover:bg-zinc-800/70 focus:bg-zinc-900 text-zinc-100 placeholder-zinc-500 text-sm pl-9 pr-8 py-2 rounded-xl border border-zinc-700/60 focus:border-violet-500 focus:outline-none transition-all shadow-inner"
+                    className="w-36 lg:w-48 bg-zinc-900/90 text-zinc-100 placeholder-zinc-500 text-xs pl-8 pr-7 py-2 rounded-xl border border-zinc-700/60 focus:border-violet-500 focus:outline-none transition-all shadow-inner"
                   />
                   {searchQuery && (
                     <button
+                      type="button"
                       onClick={() => {
                         setSearchQuery('');
                         setSearchResults([]);
                       }}
-                      className="absolute right-2.5 text-zinc-400 hover:text-white"
+                      className="absolute right-2.5 text-zinc-400 hover:text-white cursor-pointer"
                     >
-                      <X className="w-4 h-4" />
+                      <X className="w-3.5 h-3.5" />
                     </button>
                   )}
                 </div>
 
                 {/* Instant Search Dropdown */}
                 {isSearchOpen && searchResults.length > 0 && (
-                  <div className="absolute right-0 top-12 w-80 sm:w-96 bg-[#14151a] border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden z-50">
-                    <div className="p-2 border-b border-zinc-800 text-xs font-semibold text-zinc-400 uppercase tracking-wider flex justify-between items-center">
-                      <div className="flex items-center gap-1.5">
-                        <span>Global Anime Matches</span>
-                        {isSearchingGlobal && (
-                          <span className="text-[10px] lowercase text-violet-400 font-normal animate-pulse">
-                            (searching worldwide...)
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-[11px] text-zinc-400">Esc to close</span>
-                    </div>
-                    <div className="max-h-96 overflow-y-auto divide-y divide-zinc-800/50">
+                  <div className="absolute right-0 top-11 w-80 bg-[#14151a] border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden z-50">
+                    <div className="max-h-80 overflow-y-auto divide-y divide-zinc-800/50">
                       {searchResults.map((anime) => (
                         <button
                           key={anime.id}
+                          type="button"
                           onClick={() => handleSelectFromSearch(anime)}
-                          className="w-full p-2.5 flex items-center gap-3 hover:bg-zinc-800/80 transition-colors text-left group"
+                          className="w-full p-2.5 flex items-center gap-3 hover:bg-zinc-800/80 transition-colors text-left group cursor-pointer"
                         >
                           <img
                             src={anime.poster}
                             alt={anime.title}
-                            className="w-12 h-16 object-cover rounded-lg flex-shrink-0 group-hover:scale-105 transition-transform"
+                            className="w-10 h-14 object-cover rounded-lg flex-shrink-0"
                           />
                           <div className="flex-1 min-w-0">
-                            <h4 className="text-sm font-semibold text-white truncate group-hover:text-violet-400 transition-colors">
+                            <h4 className="text-xs font-bold text-white truncate group-hover:text-violet-400">
                               {anime.title}
                             </h4>
-                            <div className="flex items-center gap-2 mt-1 text-xs text-zinc-400">
-                              <span className="px-1.5 py-0.5 bg-violet-950/80 text-violet-300 font-semibold rounded text-[11px] border border-violet-800/40">
-                                Score: {anime.score}
-                              </span>
+                            <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-zinc-400">
+                              <span className="text-emerald-400 font-bold">Score: {anime.score}</span>
+                              <span>&bull;</span>
                               <span>{anime.year}</span>
-                              <span className="text-zinc-600">•</span>
-                              <span className="truncate">{anime.genres.slice(0, 2).join(', ')}</span>
                             </div>
                           </div>
                         </button>
                       ))}
                     </div>
-                    <button
-                      onClick={() => {
-                        setCurrentView('catalog');
-                        setIsSearchOpen(false);
-                      }}
-                      className="w-full py-2.5 text-center text-xs font-medium text-violet-400 hover:text-violet-300 bg-zinc-900 hover:bg-zinc-800/70 transition-colors block border-t border-zinc-800"
-                    >
-                      View all results in Catalog &rarr;
-                    </button>
                   </div>
                 )}
               </div>
 
-              {/* User Authentication Menu */}
-              <div className="relative" ref={profileMenuRef}>
-                {user ? (
-                  <button
-                    onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
-                    className="flex items-center gap-2 p-1 rounded-xl hover:bg-zinc-800/80 transition-colors border border-transparent hover:border-zinc-700 focus:outline-none"
-                  >
-                    {user.photoURL ? (
-                      <img
-                        src={user.photoURL}
-                        alt={user.displayName || 'User'}
-                        className="w-8 h-8 rounded-lg object-cover ring-2 ring-violet-500/50"
-                      />
-                    ) : (
-                      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-600 to-indigo-700 flex items-center justify-center font-bold text-white text-sm">
-                        {user.displayName ? user.displayName.charAt(0).toUpperCase() : 'U'}
-                      </div>
-                    )}
-                    <span className="hidden lg:inline text-xs font-medium text-zinc-200 max-w-[100px] truncate">
-                      {user.displayName?.split(' ')[0] || 'User'}
-                    </span>
-                  </button>
-                ) : (
-                  <button
-                    onClick={signInWithGoogle}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-violet-600 hover:bg-violet-500 active:bg-violet-700 text-white text-xs font-semibold shadow-md shadow-violet-600/25 transition-all"
-                  >
-                    <LogIn className="w-4 h-4" />
-                    <span className="hidden sm:inline">Sign in with Google</span>
-                    <span className="sm:hidden">Sign In</span>
-                  </button>
-                )}
+              {/* Requirement 5: Nel Coins Counter on Nav */}
+              <button
+                type="button"
+                onClick={onOpenShop}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-black shadow-sm transition-all cursor-pointer group"
+                title="View Nel Shop & Balance"
+              >
+                <Coins className="w-4 h-4 fill-amber-400 group-hover:scale-110 transition-transform" />
+                <span>{currentUser.nelCoins}</span>
+                <span className="hidden sm:inline text-[10px] uppercase text-amber-400/80 font-bold ml-0.5">
+                  Coins
+                </span>
+              </button>
 
-                {/* Profile Dropdown */}
-                {isProfileMenuOpen && user && (
+              {/* Daily Reward Claim Streak Button */}
+              <button
+                type="button"
+                onClick={onOpenDailyReward}
+                className={`relative p-2 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                  isDailyRewardReady
+                    ? 'bg-amber-500/20 border-amber-400 text-amber-300 shadow-md shadow-amber-500/30 animate-pulse'
+                    : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
+                }`}
+                title="Claim 24h Daily Streak Reward"
+              >
+                <Calendar className="w-4 h-4" />
+                {isDailyRewardReady && (
+                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-400 rounded-full ring-2 ring-zinc-950" />
+                )}
+              </button>
+
+              {/* Friends Modal Button */}
+              <button
+                type="button"
+                onClick={onOpenFriends}
+                className="p-2 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-white transition-all cursor-pointer"
+                title="Friends List"
+              >
+                <Users className="w-4 h-4 text-violet-400" />
+              </button>
+
+              {/* Nel Shop Button */}
+              <button
+                type="button"
+                onClick={onOpenShop}
+                className="p-2 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-white transition-all cursor-pointer"
+                title="Nel Customization Shop"
+              >
+                <ShoppingBag className="w-4 h-4 text-fuchsia-400" />
+              </button>
+
+              {/* Requirement 1 & 4: Admin Panel Exclusive Button */}
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={onOpenAdminPanel}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white text-xs font-extrabold shadow-lg shadow-violet-600/40 border border-violet-400/40 cursor-pointer animate-pulse"
+                  title="Open Admin Dashboard"
+                >
+                  <Shield className="w-3.5 h-3.5 fill-white" />
+                  <span className="hidden sm:inline">Admin Panel</span>
+                </button>
+              )}
+
+              {/* Global Chat Toggle Button */}
+              <button
+                type="button"
+                onClick={onToggleChat}
+                className={`p-2 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  isChatOpen
+                    ? 'bg-violet-600 border-violet-500 text-white shadow-md shadow-violet-600/40'
+                    : 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:text-white'
+                }`}
+                title="Toggle Global Live Chat"
+              >
+                <MessageSquare className="w-4 h-4" />
+                <span className="hidden xl:inline text-xs">Chat</span>
+              </button>
+
+              {/* User Profile Menu */}
+              <div className="relative" ref={profileMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+                  className="flex items-center gap-2 p-1 rounded-xl hover:bg-zinc-800/80 transition-colors border border-transparent hover:border-zinc-700 cursor-pointer"
+                >
+                  <img
+                    src={currentUser.avatar}
+                    alt={currentUser.username}
+                    className="w-8 h-8 rounded-xl object-cover ring-2 ring-violet-500/50"
+                  />
+                  <div className="hidden sm:flex flex-col text-left">
+                    <span className="text-xs font-bold text-white max-w-[90px] truncate leading-tight">
+                      {currentUser.username}
+                    </span>
+                    <span className="text-[10px] text-violet-400 font-semibold leading-tight">
+                      Lvl {currentUser.level}
+                    </span>
+                  </div>
+                  {isAdmin && (
+                    <span className="px-1.5 py-0.2 rounded bg-violet-600 text-white font-black text-[9px] uppercase hidden md:inline">
+                      [ADMIN]
+                    </span>
+                  )}
+                </button>
+
+                {/* Profile Dropdown Menu */}
+                {isProfileMenuOpen && (
                   <div className="absolute right-0 top-12 w-64 bg-[#14151a] border border-zinc-800 rounded-2xl shadow-2xl p-2 z-50">
                     <div className="px-3 py-2 border-b border-zinc-800">
-                      <p className="text-sm font-semibold text-white truncate">{user.displayName || 'Anime Fan'}</p>
-                      <p className="text-xs text-zinc-400 truncate">{user.email}</p>
-                      <div className="mt-1 flex items-center gap-1.5 text-[11px] text-emerald-400">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                        Firebase Auth Connected
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-bold text-white truncate">{currentUser.username}</p>
+                        {isAdmin && (
+                          <span className="px-1.5 py-0.2 rounded bg-violet-600 text-white font-black text-[9px]">
+                            [ADMIN]
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-zinc-400 truncate">{currentUser.email}</p>
+                      <div className="flex items-center justify-between text-[11px] text-amber-300 mt-1 font-semibold">
+                        <span>Balance: {currentUser.nelCoins} Coins</span>
+                        <span className="text-violet-400">Level {currentUser.level}</span>
                       </div>
                     </div>
+
                     <div className="py-1">
                       <button
+                        type="button"
                         onClick={() => {
                           setCurrentView('profile');
                           setIsProfileMenuOpen(false);
                         }}
-                        className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-zinc-300 hover:text-white hover:bg-zinc-800 rounded-xl transition-colors text-left"
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-zinc-300 hover:text-white hover:bg-zinc-800 rounded-xl transition-colors text-left cursor-pointer"
                       >
                         <UserIcon className="w-4 h-4 text-violet-400" />
-                        <span>Profile & Watchlist</span>
+                        <span>Profile & Customization</span>
                       </button>
+
                       <button
+                        type="button"
                         onClick={() => {
-                          setCurrentView('profile');
+                          onOpenShop();
                           setIsProfileMenuOpen(false);
                         }}
-                        className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-zinc-300 hover:text-white hover:bg-zinc-800 rounded-xl transition-colors text-left"
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-zinc-300 hover:text-white hover:bg-zinc-800 rounded-xl transition-colors text-left cursor-pointer"
                       >
-                        <Bookmark className="w-4 h-4 text-violet-400" />
-                        <span>My Watchlist ({bookmarksCount})</span>
+                        <ShoppingBag className="w-4 h-4 text-fuchsia-400" />
+                        <span>Nel Shop</span>
                       </button>
+
                       <button
+                        type="button"
                         onClick={() => {
-                          setCurrentView('profile');
+                          onOpenDailyReward();
                           setIsProfileMenuOpen(false);
                         }}
-                        className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-zinc-300 hover:text-white hover:bg-zinc-800 rounded-xl transition-colors text-left"
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-zinc-300 hover:text-white hover:bg-zinc-800 rounded-xl transition-colors text-left cursor-pointer"
                       >
-                        <Clock className="w-4 h-4 text-indigo-400" />
-                        <span>Continue Watching</span>
+                        <Calendar className="w-4 h-4 text-amber-400" />
+                        <span>Daily Streak Rewards</span>
                       </button>
-                    </div>
-                    <div className="pt-1 border-t border-zinc-800">
+
                       <button
+                        type="button"
                         onClick={() => {
-                          signOut();
+                          onOpenFriends();
                           setIsProfileMenuOpen(false);
                         }}
-                        className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors text-left font-medium"
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-zinc-300 hover:text-white hover:bg-zinc-800 rounded-xl transition-colors text-left cursor-pointer"
                       >
-                        <LogOut className="w-4 h-4" />
-                        <span>Sign Out</span>
+                        <Users className="w-4 h-4 text-emerald-400" />
+                        <span>Friends List</span>
                       </button>
+
+                      {/* Admin Panel Direct Link */}
+                      {isAdmin ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onOpenAdminPanel();
+                            setIsProfileMenuOpen(false);
+                          }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-violet-300 font-bold hover:bg-violet-950/50 rounded-xl transition-colors text-left cursor-pointer border border-violet-800/40"
+                        >
+                          <Shield className="w-4 h-4 text-violet-400" />
+                          <span>Owner Admin Panel</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onOpenAdminLogin();
+                            setIsProfileMenuOpen(false);
+                          }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-zinc-400 hover:text-violet-300 hover:bg-zinc-800 rounded-xl transition-colors text-left cursor-pointer"
+                        >
+                          <KeyRound className="w-4 h-4 text-zinc-400" />
+                          <span>Master Admin Login</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -362,8 +462,9 @@ export const Navbar: React.FC<NavbarProps> = ({
 
               {/* Mobile menu button */}
               <button
+                type="button"
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="md:hidden p-2 text-zinc-400 hover:text-white rounded-lg focus:outline-none"
+                className="lg:hidden p-2 text-zinc-400 hover:text-white rounded-lg cursor-pointer"
               >
                 {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
               </button>
@@ -373,8 +474,9 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Mobile dropdown navigation */}
         {isMobileMenuOpen && (
-          <div className="md:hidden bg-[#14151a] border-b border-zinc-800 px-4 pt-2 pb-4 space-y-1">
+          <div className="lg:hidden bg-[#14151a] border-b border-zinc-800 px-4 pt-2 pb-4 space-y-1">
             <button
+              type="button"
               onClick={() => {
                 setCurrentView('home');
                 setIsMobileMenuOpen(false);
@@ -384,6 +486,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               Home
             </button>
             <button
+              type="button"
               onClick={() => {
                 setCurrentView('catalog');
                 setIsMobileMenuOpen(false);
@@ -394,6 +497,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               Catalog
             </button>
             <button
+              type="button"
               onClick={() => {
                 setCurrentView('trending');
                 setIsMobileMenuOpen(false);
@@ -404,8 +508,9 @@ export const Navbar: React.FC<NavbarProps> = ({
               Trending
             </button>
             <button
+              type="button"
               onClick={() => {
-                setCurrentView('mylist');
+                setCurrentView('profile');
                 setIsMobileMenuOpen(false);
               }}
               className="w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-zinc-300 hover:text-white hover:bg-zinc-800 flex items-center gap-2"
@@ -413,19 +518,22 @@ export const Navbar: React.FC<NavbarProps> = ({
               <Bookmark className="w-4 h-4 text-violet-400" />
               My List ({bookmarksCount})
             </button>
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenAdminPanel();
+                  setIsMobileMenuOpen(false);
+                }}
+                className="w-full text-left px-3 py-2 rounded-lg text-sm font-bold text-violet-300 bg-violet-950/40 border border-violet-800/40 flex items-center gap-2"
+              >
+                <Shield className="w-4 h-4 text-violet-400" />
+                Admin Dashboard
+              </button>
+            )}
           </div>
         )}
       </header>
-
-      {/* Auth error notification banner if any */}
-      {error && (
-        <div className="bg-red-950/80 border-b border-red-800/80 px-4 py-2.5 text-xs text-red-200 flex items-center justify-between">
-          <span>{error}</span>
-          <button onClick={clearError} className="text-red-400 hover:text-white ml-2">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
     </>
   );
 };
